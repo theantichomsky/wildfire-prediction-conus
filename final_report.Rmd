@@ -292,7 +292,7 @@ ggplot() +
   theme_minimal(base_size = 12)
 ```
 
-Figure 1 makes the geography obvious. Fire risk is overwhelmingly concentrated in the West: California, the Northern Rockies, and the Great Basin. Some of those cells exceed 20% mean monthly fire probability. East of the Mississippi the rate is almost uniformly below 5%, with Florida and the Gulf Coast as the only exceptions.
+Figure 1 makes the geography obvious. Fire risk is overwhelmingly concentrated in the West: California, the Northern Rockies, and the Great Basin. Some of those cells exceed 20% mean monthly fire probability. East of the Mississippi the rate is almost uniformly below 5%, with Florida and the Gulf Coast as the only exceptions. Cells with no recorded notable fire in 1992--2015 are excluded from the panel and do not appear on the map.
 
 None of this is surprising on its own. Arid public lands burn more than humid eastern farmland. But the magnitude is worth pausing on. The difference between a 20% cell and a 2% cell is an order of magnitude, driven by geography alone. That is a lot of signal sitting in the location variables before any temporal features are added.
 
