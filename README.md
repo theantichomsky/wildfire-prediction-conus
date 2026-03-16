@@ -20,6 +20,7 @@ This report builds a binary prediction model for notable wildfire incidence (≥
 
 The dataset is too large for GitHub. Download it from Kaggle:
 https://www.kaggle.com/datasets/rtatman/188-million-us-wildfires
+
 It will download an SQLite file. Place the SQLite file at `./Data/FPA_FOD_20170508.sqlite` relative to the project root.
 
 -- For knitting --
