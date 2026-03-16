@@ -29,14 +29,14 @@ set.seed(141)
 
 # Abstract {.unnumbered}
 
-The chief object of this report is to determine whether notable wildfire incidence in the contiguous United States can be predicted at the grid-cell-by-month level using only historical fire records. "Notable" here means fire burning 300 acres or more. The data come from the FPA FOD (1.88 million records, 1992--2015), which we restructure into a space--time panel of 221,564 cell-months across 772 grid cells. For each cell-month the outcome is binary: does at least one notable fire occur next month? A logistic regression baseline and a gradient-boosted tree model (XGBoost) are compared under expanding-window cross-validation with 20 annual folds. The logistic regression achieves a mean AUC of 0.763; XGBoost, 0.844. The gap holds in every validation year. Lagged fire history and seasonal timing contribute the most to discrimination, and the consistency of XGBoost's advantage points to geography--season interactions that the additive baseline cannot represent.
+The chief object of this report is to determine whether notable wildfire incidence in the contiguous United States can be predicted at the grid-cell-by-month level using only historical fire records. "Notable" here means fire burning 300 acres or more. The data come from the FPA FOD (1.88 million records, 1992--2015), which we restructure into a space--time panel of 221,564 cell-months across 772 grid cells. For each cell-month the outcome is binary: does at least one notable fire occur next month? A logistic regression baseline and a gradient-boosted tree model (XGBoost) are compared under expanding-window cross-validation with 20 annual folds. The logistic regression achieves a mean AUC of approximately 0.76; XGBoost, approximately 0.84. The gap holds in every validation year. Lagged fire counts and spatial coordinates contribute the most to discrimination, and the consistency of XGBoost's advantage points to geography--season interactions that the additive baseline cannot represent.
 
 ## Key Contributions {.unnumbered}
 
 - **Full dataset:** Analysis uses all 1.88 million wildfire records rather than a subsample, eliminating false zeros in the space--time panel that row-level sampling would introduce.
 - **Engineered predictor set:** Fourteen features spanning static geography, cyclical seasonal encoding, and seven lagged fire-history variables, all constructed using only information available before the predicted month.
 - **Time-aware validation:** Expanding-window cross-validation with 20 annual folds ensures the model is never evaluated on data it could have seen during training.
-- **Consistent improvement:** XGBoost outperforms logistic regression in every validation year, with a mean AUC of 0.844 vs. 0.763.
+- **Consistent improvement:** XGBoost outperforms logistic regression in every validation year, with a mean AUC of approximately 0.84 vs. 0.76.
 
 *NOTE: Code chunks are collapsed by default. Click the "Show" button on the right of any chunk to expand it.*
 
@@ -95,7 +95,7 @@ Since the project specifies the contiguous United States, records from Alaska, H
 
 Most recorded wildfires are small. Including all of them would bury the meaningful events under extreme class imbalance, so we filter to a minimum burned area. To choose the cutoff we counted qualifying fires at two thresholds: `r format(sum(wildfires$FIRE_SIZE >= 100), big.mark = ",")` fires at 100 acres and `r format(sum(wildfires$FIRE_SIZE >= 300), big.mark = ",")` at 300 acres. The 100-acre threshold retains more events but includes many fires too small to have policy relevance; 300 acres is the conventional definition for large fires in grass and brush fuel models and produces a cleaner distinction. We use 300.
 
-One detail worth flagging: `FIRE_SIZE` is a post-event measurement. It records the final burned area after containment, not a real-time estimate. We use it only for filtering. It is not a predictor.
+One detail worth flagging: `FIRE_SIZE` is a post-event measurement. It records the final burned area after containment, not a real-time estimate. We use it for two purposes: filtering (the 300-acre threshold) and constructing lagged size features (`size_lag1`, `size_roll3`, `size_roll12`). The lagged features reference only fires that have already occurred and been contained in prior months, so the final burned area is known by the time the prediction is made. Raw `FIRE_SIZE` for the target month is never a predictor.
 
 ```{r notable-filter}
 notable_threshold <- 300
@@ -189,7 +189,7 @@ Fourteen predictors, organized into three groups.
 
 **Seasonal features.** Month is encoded as $\sin(2\pi m / 12)$ and $\cos(2\pi m / 12)$ so that December and January are treated as neighbors rather than 11 units apart. Calendar year is included as well.
 
-**Lagged fire history.** Seven features built from each cell's past. The fire count one month ago (`fire_lag1`) and twelve months ago (`fire_lag12`); rolling 3-month and 12-month fire count sums; and the analogous trio for mean fire size (`size_lag1`, `size_roll3`, `size_roll12`). Every one of these is computed from data strictly before the target month. If even one predictor leaked future information the entire validation framework would be compromised, so we were careful about this. Missing values at the beginning of each cell's time series, where not enough history exists to compute a lag, are set to zero.
+**Lagged fire history.** Seven features built from each cell's past. The fire count one month ago (`fire_lag1`) and twelve months ago (`fire_lag12`); rolling 3-month and 12-month fire count sums; and the analogous trio for mean fire size (`size_lag1`, `size_roll3`, `size_roll12`). Every one of these is computed from data strictly before the target month. The size-based features assume that fires from prior months have been fully observed and their final burned area recorded by the time the next-month forecast is made. If even one predictor leaked future information the entire validation framework would be compromised, so we were careful about this. Missing values at the beginning of each cell's time series, where not enough history exists to compute a lag, are set to zero.
 
 ```{r state-assignment}
 mode_state <- function(x) {
@@ -357,7 +357,7 @@ ggplot(eda_year, aes(x = year, y = mean_y_next)) +
   theme_minimal(base_size = 12)
 ```
 
-No strong trend over time. The rate bounces around from year to year, with spikes in 2006 and 2012 (both well-documented drought years) and a dip in 2010. The absence of a monotonic increase is itself informative: despite widespread attention to worsening fire seasons in recent decades, the FPA FOD data through 2015 do not show a clear linear upward trend in notable-fire probability at the national level. This may partly reflect the dataset's end date, since several of the most severe fire years on record (2017, 2020) fall outside the coverage window.
+No strong trend over time. The rate bounces around from year to year, with visible spikes and dips that do not form a directional pattern. The absence of a monotonic increase is itself informative: despite widespread attention to worsening fire seasons in recent decades, the FPA FOD data through 2015 do not show a clear linear upward trend in notable-fire probability at the national level. This may partly reflect the dataset's end date, since several of the most severe fire years on record (2017, 2020) fall outside the coverage window.
 
 Year is included as a predictor to pick up any slow drift, but it is clearly not where the main signal lives. The volatility also tells us what to expect from the validation: model performance will fluctuate across folds, and years that deviate strongly from historical patterns will be harder for both models. Time-aware cross-validation is designed to expose that instability rather than mask it.
 
@@ -525,7 +525,7 @@ tibble(
   kable(caption = "Table 4: Overall mean AUC across all validation folds.")
 ```
 
-Logistic regression: mean AUC = `r round(mean(fold_results$auc_glm), 4)` (SE = `r round(sd(fold_results$auc_glm) / sqrt(nrow(fold_results)), 4)`). XGBoost: mean AUC = `r round(mean(fold_results$auc_xgb), 4)` (SE = `r round(sd(fold_results$auc_xgb) / sqrt(nrow(fold_results)), 4)`). That is a `r round((mean(fold_results$auc_xgb) - mean(fold_results$auc_glm)) / mean(fold_results$auc_glm) * 100, 1)`% improvement. XGBoost wins in `r sum(fold_results$auc_xgb > fold_results$auc_glm)` of `r nrow(fold_results)` folds, and a paired $t$-test on the fold-level AUCs gives $p$ = `r format.pval(t.test(fold_results$auc_xgb, fold_results$auc_glm, paired = TRUE)$p.value, digits = 3)`, so the gap is not attributable to fold-level noise. Neither model ever drops below 0.5.
+Logistic regression: mean AUC = `r round(mean(fold_results$auc_glm), 4)` (SE = `r round(sd(fold_results$auc_glm) / sqrt(nrow(fold_results)), 4)`). XGBoost: mean AUC = `r round(mean(fold_results$auc_xgb), 4)` (SE = `r round(sd(fold_results$auc_xgb) / sqrt(nrow(fold_results)), 4)`). That is a `r round((mean(fold_results$auc_xgb) - mean(fold_results$auc_glm)) / mean(fold_results$auc_glm) * 100, 1)`% improvement. XGBoost wins in `r sum(fold_results$auc_xgb > fold_results$auc_glm)` of `r nrow(fold_results)` folds. A paired $t$-test on the fold-level AUCs gives $p$ = `r format.pval(t.test(fold_results$auc_xgb, fold_results$auc_glm, paired = TRUE)$p.value, digits = 3)`, though the consistency across all folds is itself the stronger evidence that the gap is real. Neither model ever drops below 0.5.
 
 An AUC of `r round(mean(fold_results$auc_xgb), 2)` is not good enough to deploy as an operational early-warning system. But for a model built entirely from historical fire records with no weather data, no drought indices, and no vegetation maps, it is a reasonable starting point. The logistic regression alone would be a weak model; XGBoost's consistent edge over it confirms that the geography--season interactions the EDA identified are real and learnable.
 
@@ -533,7 +533,7 @@ It is worth asking whether a ~10% AUC improvement justifies the added complexity
 
 ## Diagnostic Plots
 
-```{r diagnostic-auc, fig.cap="Figure 4: AUC by validation year. XGBoost outperforms the baseline in every fold; both models dip in drought years (2005, 2010)."}
+```{r diagnostic-auc, fig.cap="Figure 4: AUC by validation year. XGBoost outperforms the baseline in every fold; both models show year-to-year variation."}
 fold_long <- fold_results %>%
   pivot_longer(cols = c(auc_glm, auc_xgb),
                names_to = "model", values_to = "auc") %>%
@@ -549,7 +549,7 @@ ggplot(fold_long, aes(x = valid_year, y = auc, color = model)) +
   theme_minimal(base_size = 12)
 ```
 
-XGBoost beats the baseline in every fold (Figure 4), but the margin is not constant. Both models dip in 2005 and 2010, years that likely had unusual climate conditions the models were not prepared for. Neither model gets systematically better or worse as the training window expands, which is reassuring; more data does not seem to help or hurt in a directional way.
+XGBoost beats the baseline in every fold (Figure 4), but the margin is not constant. Both models show year-to-year variation, with some validation years producing noticeably lower AUC than others. Since we have no climate covariates, we cannot say what drives the bad years; we can only observe that they affect both models similarly. Neither model gets systematically better or worse as the training window expands, which is reassuring; more data does not seem to help or hurt in a directional way.
 
 ```{r diagnostic-roc, fig.cap="Figure 5: ROC curves on the final fold (2014). XGBoost dominates across nearly all thresholds, especially at high sensitivity."}
 final_fold_year <- max(fold_results$valid_year)
@@ -606,7 +606,42 @@ ggplot(roc_comp, aes(x = fpr, y = tpr, color = model)) +
 
 The ROC curves for the final fold (Figure 5) show XGBoost dominating across nearly all false-positive-rate thresholds. The gap is widest at high sensitivity, where the logistic curve bends toward the diagonal. Those are the hardest positive cases to identify, and the tree model handles them noticeably better.
 
-A caveat: AUC measures discrimination (ranking) but says nothing about calibration (whether a predicted 10% actually corresponds to a 10% observed rate). We did not perform a formal calibration analysis, e.g. via a reliability diagram, so the raw predicted probabilities should be taken as relative risk scores rather than well-calibrated event probabilities. For the purpose of this report the ranking interpretation is sufficient, but calibration would matter in any operational deployment.
+AUC measures discrimination (ranking) but says nothing about calibration: does a predicted 10% actually correspond to a 10% observed rate? To check, we bin the final-fold predicted probabilities into deciles and plot the observed fire rate against the bin midpoint.
+
+```{r diagnostic-calibration, fig.cap="Figure 5b: Reliability diagram on the final fold. Perfect calibration would follow the diagonal. XGBoost tracks it reasonably well at low predicted probabilities but overestimates risk in the upper bins."}
+cal_data <- bind_rows(
+  tibble(pred = p_final_glm, obs = valid_final$y_next, model = "Logistic"),
+  tibble(pred = p_final_xgb, obs = valid_final$y_next, model = "XGBoost")
+)
+
+cal_binned <- cal_data %>%
+  group_by(model) %>%
+  mutate(bin = ntile(pred, 10)) %>%
+  group_by(model, bin) %>%
+  summarise(mean_pred = mean(pred), mean_obs = mean(obs), n = n(), .groups = "drop")
+
+ggplot(cal_binned, aes(x = mean_pred, y = mean_obs, color = model)) +
+  geom_point(size = 3) +
+  geom_line(linewidth = 0.8) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  coord_equal(xlim = c(0, max(cal_binned$mean_pred) * 1.05),
+              ylim = c(0, max(cal_binned$mean_obs) * 1.05)) +
+  labs(x = "Mean predicted probability", y = "Observed fire rate", color = "Model") +
+  theme_minimal(base_size = 12)
+```
+
+```{r brier-score}
+brier_glm <- mean((p_final_glm - valid_final$y_next)^2)
+brier_xgb <- mean((p_final_xgb - valid_final$y_next)^2)
+
+tibble(
+  Model = c("Logistic Regression", "XGBoost"),
+  `Brier Score` = round(c(brier_glm, brier_xgb), 4)
+) %>%
+  kable(caption = "Table 5: Brier score on the final validation fold (lower is better).")
+```
+
+XGBoost has a lower Brier score (`r round(brier_xgb, 4)` vs. `r round(brier_glm, 4)`), confirming it is better calibrated as well as better at ranking. That said, Figure 5b shows both models tend to overestimate risk in the highest predicted-probability bins, so the raw scores should still be interpreted as relative risk rather than precise event probabilities.
 
 ---
 
@@ -614,7 +649,7 @@ A caveat: AUC measures discrimination (ranking) but says nothing about calibrati
 
 Wildfires in the contiguous United States are not evenly distributed. The West dominates. Seasonality is strong, but it looks different depending on which side of the 100th meridian you are on. Year-to-year variation exists but has no clear trend.
 
-A logistic regression baseline achieves a mean AUC of `r round(mean(fold_results$auc_glm), 3)` across `r nrow(fold_results)` years of expanding-window validation. XGBoost raises that to `r round(mean(fold_results$auc_xgb), 3)` and wins in every fold. The improvement lines up with the EDA: geography and season interact, and the tree model picks up on that interaction while the logistic regression cannot. Variable importance (Appendix, Figure 6) shows which features contribute the most.
+Using only historical fire records, we can do meaningfully better than chance at identifying which grid cells are likely to see a large fire next month. A simple logistic regression gets partway there; a gradient-boosted tree model does noticeably better because it picks up on the fact that fire season looks different in different parts of the country, something the simpler model cannot represent. The tree model outperforms the baseline in every one of `r nrow(fold_results)` validation years, and the most important predictors are how many fires a cell has seen recently and where it is located (Appendix, Figure 6). In quantitative terms, the mean AUC improves from `r round(mean(fold_results$auc_glm), 3)` to `r round(mean(fold_results$auc_xgb), 3)`.
 
 The model has real limitations. It only covers grid cells that have had at least one notable fire, so it says nothing about areas with no fire history. The predictor set comes entirely from the fire records; we have no weather data, no drought index, no vegetation maps. A 1° grid is coarse enough that meaningful variation within a cell gets averaged out. Any of these could be addressed in future work, and the most obvious next step would be to incorporate external climate data. But even with the constraints of a single-source dataset, the model produces a consistent and non-trivial separation between fire-prone and non-fire-prone cell-months, which is what we set out to show.
 
