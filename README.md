@@ -1,5 +1,6 @@
 # Predicting Notable Wildfire Incidence in the Contiguous United States
 
+<img width="612" height="417" alt="image" src="https://github.com/user-attachments/assets/b59b836a-ae9e-420b-952e-4612df496a19" />
 
 Final project report completed in part for the fulfillments of the course requirements for STA 141A (Winter 2026), UC Davis.
 
