@@ -1,7 +1,7 @@
 # Predicting Notable Wildfire Incidence in the Contiguous United States
 
 
-Final project report for STA 141A (Winter 2026), UC Davis.
+Final project report completed in part for the fulfillments of the course requirements for STA 141A (Winter 2026), UC Davis.
 
 ## Overview
 
